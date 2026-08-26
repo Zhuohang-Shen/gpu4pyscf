@@ -162,7 +162,7 @@ class KnownValues(unittest.TestCase):
         assert abs(dat - ref).max() < 1e-6
 
     def test_multigrid_image_boundary_strain_deriv(self):
-        # The structure is from t-HfO2, all elements are changed to H for fast Cell construction.
+        # The structure is from t-HfO2, all elements are changed to H.
         cell = gto.Cell()
         cell.atom = [
             ('H', (1.767935803700000, 1.767935803726000, 2.595423152457000)),
