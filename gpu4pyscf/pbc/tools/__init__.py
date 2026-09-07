@@ -13,4 +13,3 @@
 # limitations under the License.
 
 from .pbc import *
-from .magmom import *
