@@ -149,7 +149,7 @@ class Gradients(GradientsBase):
             j_factor = 0
         elif xc.upper() != 'HF':
             from gpu4pyscf.pbc.grad.krks import get_vxc
-            de += get_vxc(ni, mf.cell, mf.grids, xc, dm[None], np.zeros((1, 3))) * 2
+            de += get_vxc(ni, mf.cell, mf.grids, xc, dm[None], np.zeros((1, 3)))
 
         if j_factor != 0 or k_sr != 0 or k_lr != 0:
             de += jk_energy_per_atom(
