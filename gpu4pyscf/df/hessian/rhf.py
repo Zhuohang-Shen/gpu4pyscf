@@ -231,8 +231,10 @@ def _jk_energy_per_atom(int3c2e_opt, dm, j_factor=1, k_factor=1,
                 ctypes.cast(ejk.data.ptr, ctypes.c_void_p),
                 ctypes.cast(compressed.data.ptr, ctypes.c_void_p),
                 lib.c_null_ptr(),
-                ctypes.byref(int3c2e_envs), ctypes.c_double(omega),
-                ctypes.c_double(lr_factor), ctypes.c_double(sr_factor),
+                ctypes.c_double(omega),
+                ctypes.c_double(lr_factor),
+                ctypes.c_double(sr_factor),
+                ctypes.byref(int3c2e_envs),
                 ctypes.c_int(shm_size_max),
                 ctypes.c_int(len(shl_pair_offsets) - 1),
                 ctypes.c_int(1),
@@ -597,8 +599,9 @@ def _j_energy_per_atom(int3c2e_opt, dm, verbose=None):
             ctypes.cast(ej.data.ptr, ctypes.c_void_p),
             ctypes.cast(dm.data.ptr, ctypes.c_void_p),
             ctypes.cast(auxvec.data.ptr, ctypes.c_void_p),
-            ctypes.byref(int3c2e_envs), ctypes.c_double(0.),
+            ctypes.c_double(0.),
             ctypes.c_double(1.), ctypes.c_double(1.),
+            ctypes.byref(int3c2e_envs),
             ctypes.c_int(shm_size_max),
             ctypes.c_int(len(shl_pair_offsets) - 1),
             ctypes.c_int(len(ksh_offsets_cpu) - 1),
@@ -1215,8 +1218,10 @@ def _int2c2e_ip2_per_atom(mol, dm, omega=None, lr_factor=None, sr_factor=None):
     err = libvhf_rys.e_int2c2e_ip2(
         ctypes.cast(ejk.data.ptr, ctypes.c_void_p),
         ctypes.cast(dm.data.ptr, ctypes.c_void_p),
-        ctypes.byref(rys_envs), ctypes.c_double(omega),
-        ctypes.c_double(lr_factor), ctypes.c_double(sr_factor),
+        ctypes.c_double(omega),
+        ctypes.c_double(lr_factor),
+        ctypes.c_double(sr_factor),
+        ctypes.byref(rys_envs),
         ctypes.c_int(shm_size_max),
         ctypes.c_int(nbatches_shl_pair),
         ctypes.cast(shl_pair_offsets.data.ptr, ctypes.c_void_p),
@@ -1270,13 +1275,13 @@ def make_h1(hessobj, mo_coeff, mo_occ, chkfile=None, atmlst=None, verbose=None):
     return h1mo
 
 def _get_jk_mo(hessobj, mol, dms, mo_coeff, mo_occ,
-               hermi=1, with_j=True, with_k=True, omega=None):
+               hermi=1, with_j=True, with_k=True, omega=None, lr_factor=None, sr_factor=None):
     mf = hessobj.base
     dfobj = mf.with_df
-    with dfobj.range_coulomb(omega) as dfobj:
-        return _get_jk(dfobj, dms, mo_coeff, mo_occ, hermi, with_j, with_k, omega)
+    with dfobj.range_coulomb(omega, lr_factor, sr_factor) as dfobj:
+        return _get_jk(dfobj, dms, mo_coeff, mo_occ, hermi, with_j, with_k, omega, lr_factor, sr_factor)
 
-def _get_jk(dfobj, dms, mo_coeff, mo_occ, hermi=1, with_j=True, with_k=True, omega=None):
+def _get_jk(dfobj, dms, mo_coeff, mo_occ, hermi=1, with_j=True, with_k=True, omega=None, lr_factor=None, sr_factor=None):
     ''' Compute J/K in MO for CPHF
     '''
     assert hermi == 1
@@ -1296,7 +1301,7 @@ def _get_jk(dfobj, dms, mo_coeff, mo_occ, hermi=1, with_j=True, with_k=True, ome
     if dfobj._cderi is None:
         log.debug('Build CDERI ...')
         mem_avail = get_avail_mem()
-        dfobj.build(omega=omega)
+        dfobj.build(omega=omega, lr_factor=lr_factor, sr_factor=sr_factor)
         if (isinstance(dfobj._cderi[0], cp.ndarray) and
             # Leave space for storing Krylov subspace vectors. This can be
             # dropped after opimizing the storage model of Krylov solver.

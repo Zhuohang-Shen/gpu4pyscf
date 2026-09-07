@@ -28,6 +28,7 @@ from gpu4pyscf.df import df
 from gpu4pyscf.tdscf import rhf as tdrhf
 from gpu4pyscf.grad import tdrhf as tdrhf_grad
 from gpu4pyscf.gto.mole import SortedMole
+from gpu4pyscf.scf.jk import _check_rsh_factors
 
 __all__ = ['Gradients']
 
@@ -65,6 +66,8 @@ def _jk_energy_per_atom(int3c2e_opt, dms, j_factor=None, k_factor=None, hermi=0,
     i_addr, j_addr = divmod(pair_addresses, nao)
     nao_pair = len(pair_addresses)
     naux = auxmol.nao
+
+    omega, lr_factor, sr_factor = _check_rsh_factors(mol, omega, lr_factor, sr_factor)
 
     mem_free = get_avail_mem(exclude_memory_pool=True)
     mem_avail = mem_free - n_dm*naux*nocc**2*8 - n_dm*nao**2*8
@@ -123,7 +126,7 @@ def _jk_energy_per_atom(int3c2e_opt, dms, j_factor=None, k_factor=None, hermi=0,
 
     # contract the derivatives and the pseudo DM/rho
     nsp_per_block, gout_stride, shm_size = int3c2e_scheme(
-        short_range=mol.omega<0, gout_width=54, deriv=(1,0,0))
+        short_range=omega<0, gout_width=54, deriv=(1,0,0))
     gout_stride = cp.asarray(gout_stride, dtype=np.int32)
     lmax = mol.uniq_l_ctr[:,0].max()
     laux = auxmol.uniq_l_ctr[:,0].max()
@@ -185,6 +188,9 @@ def _jk_energy_per_atom(int3c2e_opt, dms, j_factor=None, k_factor=None, hermi=0,
             ctypes.cast(compressed.data.ptr, ctypes.c_void_p),
             lib.c_null_ptr(),
             ctypes.c_int(1),
+            ctypes.c_double(omega),
+            ctypes.c_double(lr_factor),
+            ctypes.c_double(sr_factor),
             ctypes.byref(int3c2e_envs),
             ctypes.c_int(shm_size_max),
             ctypes.c_int(len(shl_pair_offsets) - 1),
@@ -253,8 +259,10 @@ def _j_energy_per_atom(int3c2e_opt, dms, j_factor, hermi=0, verbose=None):
     naux = auxvec.shape[1]
     j2c = None
 
+    omega, lr_factor, sr_factor = 0., 1., 1.
+
     nsp_per_block, gout_stride, shm_size = int3c2e_scheme(
-        short_range=mol.omega<0, gout_width=54, deriv=(1,0,0))
+        short_range=omega<0, gout_width=54, deriv=(1,0,0))
     lmax = mol.uniq_l_ctr[:,0].max()
     laux = auxmol.uniq_l_ctr[:,0].max()
     shm_size_max = shm_size[:laux+1,:lmax+1,:lmax+1].max()
@@ -274,6 +282,9 @@ def _j_energy_per_atom(int3c2e_opt, dms, j_factor, hermi=0, verbose=None):
         ctypes.cast(dms.data.ptr, ctypes.c_void_p),
         ctypes.cast(auxvec_jfac.data.ptr, ctypes.c_void_p),
         ctypes.c_int(n_dm),
+        ctypes.c_double(omega),
+        ctypes.c_double(lr_factor),
+        ctypes.c_double(sr_factor),
         ctypes.byref(int3c2e_envs),
         ctypes.c_int(shm_size_max),
         ctypes.c_int(len(shl_pair_offsets) - 1),
@@ -400,6 +411,8 @@ def _jk_energies_by_dm_factors(int3c2e_opt, dm_factors, j_factor, k_factor,
     nocc_max = max(max(dm1_noccs), max(dm2_noccs))
     log.debug1('nao=%d dm1_noccs=%s dm2_noccs=%s', nao, dm1_noccs, dm2_noccs)
 
+    omega, lr_factor, sr_factor = _check_rsh_factors(mol, omega, lr_factor, sr_factor)
+
     pair_addresses = int3c2e_opt.pair_and_diag_indices(
         cart=True, original_ao_order=False)[0]
     i_addr, j_addr = divmod(pair_addresses, nao)
@@ -417,7 +430,10 @@ def _jk_energies_by_dm_factors(int3c2e_opt, dm_factors, j_factor, k_factor,
 
     mem_free = get_avail_mem(exclude_memory_pool=True)
     mem_avail = mem_free - 2*naux*np.dot(dm1_noccs, dm2_noccs)*8 - 2*n_dm*nao**2*8
-    batch_size = int(mem_avail*.5/(n_dm*nao_pair*8))
+    if sum_results:
+        batch_size = int(mem_avail*.5/(2*nao_pair*8))
+    else:
+        batch_size = int(mem_avail*.5/(n_dm*nao_pair*8))
     laux = auxmol.uniq_l_ctr[:,0].max()
     if batch_size <= (laux+1)*(laux+2)//2:
         raise RuntimeError('Insufficient memory for storing intermediates')
@@ -520,7 +536,7 @@ def _jk_energies_by_dm_factors(int3c2e_opt, dm_factors, j_factor, k_factor,
 
     # contract the derivatives and the pseudo DM/rho
     nsp_per_block, gout_stride, shm_size = int3c2e_scheme(
-        short_range=mol.omega<0, gout_width=54, deriv=(1,0,0))
+        short_range=omega<0, gout_width=54, deriv=(1,0,0))
     gout_stride = cp.asarray(gout_stride, dtype=np.int32)
     lmax = mol.uniq_l_ctr[:,0].max()
     laux = auxmol.uniq_l_ctr[:,0].max()
@@ -547,7 +563,7 @@ def _jk_energies_by_dm_factors(int3c2e_opt, dm_factors, j_factor, k_factor,
     if sum_results:
         kern = libvhf_rys.sum_ejk_int3c2e_ip1
         ejk = cp.zeros((mol.natm, 3))
-        buf = cp.empty((nao_pair*batch_size))
+        buf, buf3 = cp.empty((2, nao_pair*batch_size))
     else:
         kern = libvhf_rys.ejk_int3c2e_ip1
         ejk = cp.zeros((n_dm, mol.natm, 3))
@@ -557,7 +573,8 @@ def _jk_energies_by_dm_factors(int3c2e_opt, dm_factors, j_factor, k_factor,
         naux_in_batch = nf[lk] * l_ctr_aux_counts[kbatch]
         aux_ao_offset = aux_loc[ksh_offsets_cpu[kbatch]]
         if sum_results:
-            compressed = cp.zeros((nao_pair, naux_in_batch))
+            compressed = ndarray((nao_pair, naux_in_batch), buffer=buf3)
+            compressed.fill(0.)
         else:
             compressed = ndarray((n_dm, nao_pair, naux_in_batch), buffer=buf)
         for k0, k1 in lib.prange(0, naux_in_batch, blksize):
@@ -593,6 +610,9 @@ def _jk_energies_by_dm_factors(int3c2e_opt, dm_factors, j_factor, k_factor,
             ctypes.cast(compressed.data.ptr, ctypes.c_void_p),
             lib.c_null_ptr(),
             ctypes.c_int(n_dm),
+            ctypes.c_double(omega),
+            ctypes.c_double(lr_factor),
+            ctypes.c_double(sr_factor),
             ctypes.byref(int3c2e_envs),
             ctypes.c_int(shm_size_max),
             ctypes.c_int(len(shl_pair_offsets) - 1),
@@ -662,8 +682,10 @@ def _j_energies_per_atom(int3c2e_opt, dm_pairs, j_factor,
     auxvec21 = auxvec_jfac[[1, 0]].reshape(2*n_dm, naux)
     j2c = None
 
+    omega, lr_factor, sr_factor = 0., 1., 1.
+
     nsp_per_block, gout_stride, shm_size = int3c2e_scheme(
-        short_range=mol.omega<0, gout_width=54, deriv=(1,0,0))
+        short_range=omega<0, gout_width=54, deriv=(1,0,0))
     lmax = mol.uniq_l_ctr[:,0].max()
     laux = auxmol.uniq_l_ctr[:,0].max()
     shm_size_max = shm_size[:laux+1,:lmax+1,:lmax+1].max()
@@ -688,6 +710,9 @@ def _j_energies_per_atom(int3c2e_opt, dm_pairs, j_factor,
         ctypes.cast(dms.data.ptr, ctypes.c_void_p),
         ctypes.cast(auxvec21.data.ptr, ctypes.c_void_p),
         ctypes.c_int(2*n_dm),
+        ctypes.c_double(omega),
+        ctypes.c_double(lr_factor),
+        ctypes.c_double(sr_factor),
         ctypes.byref(int3c2e_envs),
         ctypes.c_int(shm_size_max),
         ctypes.c_int(len(shl_pair_offsets) - 1),
