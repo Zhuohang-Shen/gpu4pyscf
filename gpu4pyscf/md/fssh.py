@@ -46,6 +46,7 @@ import h5py
 from pyscf.data.nist import AMU2AU, BOHR, HARTREE2J, PLANCK
 from pyscf.data.elements import COMMON_ISOTOPE_MASSES, NUC
 from gpu4pyscf.lib import logger
+import datetime
 
 # Physical constants for unit conversions
 FS2AUTIME = 2*np.pi * HARTREE2J / PLANCK * 1e-15  # 41.34137: femtoseconds to atomic time units
@@ -182,7 +183,7 @@ def ktdc_energy(energy_t, energy_p, energy_pp, dt, gap_tol=1e-6):
         energy_p: State energies one time step earlier.
         energy_pp: State energies two time steps earlier.
         dt: Time step in atomic units.
-        gap_tol: Energy-gap threshold below which κTDC is set to gap_tol.
+        gap_tol: Energy-gap threshold below which κTDC is set to zero.
 
     Returns:
         An antisymmetric κTDC matrix with shape ``(nstates, nstates)``.
@@ -707,27 +708,27 @@ class FSSH:
 
         return position, velocity, coefficient, pes
 
-    def _compute_tdc(self, position, velocity, cur_state):
+    def _compute_nact(self, position, velocity, cur_state):
         """Evaluate the new PES and its time-derivative coupling matrix."""
         if self.coupling_method in ('nac', 'direct'):
             pes = self.evaluate_pes(position, cur_state, with_nacv=True)
-            tdc = np.einsum('ijnd,nd->ij', pes.nacv, velocity)
+            nact = np.einsum('ijnd,nd->ij', pes.nacv, velocity)
         elif self.coupling_method in ('ktdc', 'curvature'):
             pes = self.evaluate_pes(position, cur_state, with_nacv=False)
             self._record_history(energy=pes.energy, force=pes.force, velocity=velocity)
             energy_history = self._history['energy']
             if len(energy_history) == 3:
-                tdc = ktdc_energy(
+                nact = ktdc_energy(
                     energy_history[2], energy_history[1], energy_history[0],
                     self.dt, self.ktdc_gap_tol)
             else:
                 nstates = len(self.states)
-                tdc = np.zeros((nstates, nstates))
+                nact = np.zeros((nstates, nstates))
         elif self.coupling_method == 'overlap':
             raise NotImplementedError
         else:
             raise RuntimeError(f'TDC method {self.coupling_method} not supported')
-        return pes, tdc
+        return pes, nact
 
     def _attempt_hop(self, hop_index, cur_state, position, velocity, pes,
                      step, log):
@@ -760,8 +761,7 @@ class FSSH:
                 f"Hop to state {self.states[hop_index]} rejected.")
         return cur_state, velocity, pes
 
-    def _apply_decoherence(self, coefficient, pes, cur_state,
-                           kinetic_energy_value):
+    def _apply_decoherence(self, coefficient, pes, cur_state, E_kin):
         """Apply the configured decoherence scheme."""
         if self.decoherence == 'none':
             return coefficient
@@ -771,7 +771,7 @@ class FSSH:
         # well-separated surface region.
         return edc_decoherence(
             coefficient, pes.energy, self.states.index(cur_state),
-            kinetic_energy_value, self.dt, self.alpha)
+            E_kin, self.dt, self.alpha)
 
     def _update_runtime_state(self, step, position, velocity, coefficient,
                               pes, cur_state):
@@ -841,7 +841,7 @@ class FSSH:
                  f"coupling_method={self.coupling_method}\n"
                  f"decoherence={self.decoherence}, alpha={self.alpha}\n"
                  f"Trajectory will be saved to {self.filename}\n")
-        log.info("Starting FSSH trajectory simulation")
+        log.info(f"Starting FSSH trajectory simulation at {datetime.datetime.now()}")
 
         position, velocity, coefficient, pes = self._prepare_run(
             position, velocity, coefficient, log)
@@ -857,13 +857,13 @@ class FSSH:
             cur_state = self.cur_state
 
             # 3. calculate new energy, force, and time-derivative coupling
-            pes, tdc = self._compute_tdc(position, velocity, cur_state)
+            pes, nact = self._compute_nact(position, velocity, cur_state)
 
             # 4. update the electronic amplitude within a full-time step
-            coefficient = update_coefficient(coefficient, pes.energy, tdc, self.dt)
+            coefficient = update_coefficient(coefficient, pes.energy, nact, self.dt)
 
             # 5. evaluate the switching probability
-            hop_index = self._evaluate_hop(coefficient, tdc, cur_state)
+            hop_index = self._evaluate_hop(coefficient, nact, cur_state)
 
             # 6. adjust nuclear velocity
             cur_state, velocity, pes = self._attempt_hop(
@@ -887,7 +887,7 @@ class FSSH:
 
         # Simulation completed successfully
         log.timer("FSSH simulation", *start_timing)
-        log.info("FSSH simulation completed successfully")
+        log.info(f"FSSH simulation completed successfully at {datetime.datetime.now()}")
 
         self._finalize()
 
