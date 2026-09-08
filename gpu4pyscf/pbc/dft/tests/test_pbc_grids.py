@@ -487,6 +487,10 @@ class KnownValues(unittest.TestCase):
         mf.grids.atom_grid = (40,194)
         mf.conv_tol = 1e-10
 
+        # TODO: This is a hack to avoid a OOM issue in get_hcore() function (using multigrid_v3 internally)
+        hcore = mf.to_cpu().get_hcore()
+        mf.get_hcore = lambda: cp.asarray(hcore)
+
         mf.kernel()
 
         dm = mf.make_rdm1()
@@ -500,5 +504,5 @@ class KnownValues(unittest.TestCase):
         assert np.max(np.abs(test_gradient - ref_gradient)) < 1e-9
 
 if __name__ == '__main__':
-    print("Full Tests for pbc.dft.numint")
+    print("Full Tests for PBC Becke grids")
     unittest.main()
