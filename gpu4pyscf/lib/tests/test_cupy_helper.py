@@ -240,7 +240,7 @@ class KnownValues(unittest.TestCase):
         host_array = cupy.cuda.alloc_pinned_memory(10*10*10 * 8)
         host_data = numpy.ndarray(10**3, dtype=cupy.float64, buffer=host_array)
         host_data = host_data.reshape(10,10,10)
-        host_data += numpy.random.rand(10,10,10)
+        host_data = numpy.random.rand(10,10,10)
 
         device_data = cupy.empty_like(host_data)
         host_view = host_data[:, 8:]  # Non-contiguous view on the host

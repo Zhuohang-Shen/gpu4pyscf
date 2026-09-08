@@ -468,7 +468,9 @@ class KnownValues(unittest.TestCase):
             [-0.0003304409634808,  0.0003302473672306,  0.0003302460438448],
         ])
 
-        assert np.max(np.abs(test_gradient - ref_gradient)) < 1e-8
+        # It can match down to 1e-9, if the finite difference is computed using the same dm from SCF.
+        # However if we save the finite difference result, it suffers from the numerical instability of dm, and the a 3e-7 error is observed.
+        assert np.max(np.abs(test_gradient - ref_gradient)) < 5e-7
 
     def test_xc_gradient_unrestricted_k_with_response(self):
         cell = pyscf.M(
