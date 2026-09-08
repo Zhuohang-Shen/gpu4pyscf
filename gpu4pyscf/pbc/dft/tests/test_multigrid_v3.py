@@ -197,20 +197,26 @@ def eval_nucG_SI_gradient(cell, mesh, rho_g):
 class KnownValues(unittest.TestCase):
     def test_get_pp(self):
         ref = MultiGridNumInt_cpu(cell_orth).get_pp()
+        if ref.ndim == 2: # In pyscf==2.8.0
+            ref = ref[None,:,:]
         out = multigrid.MultiGridNumInt(cell_orth).get_pp().get()
-        self.assertEqual(out.shape, (1, 48, 48))
+        self.assertEqual(out.shape, ref.shape)
         self.assertAlmostEqual(abs(ref-out).max(), 0, 8)
 
     def test_get_nuc(self):
         ref = MultiGridNumInt_cpu(cell_orth).get_nuc()
         out = multigrid.MultiGridNumInt(cell_orth).get_nuc().get()
-        self.assertEqual(out.shape, (1, 48, 48))
+        if ref.ndim == 2: # In pyscf==2.8.0
+            ref = ref[None,:,:]
+        self.assertEqual(out.shape, ref.shape)
         self.assertAlmostEqual(abs(ref-out).max(), 0, 8)
 
     def test_get_nuc_nonorth(self):
         ref = MultiGridNumInt_cpu(cell_nonorth).get_nuc()
         out = multigrid.MultiGridNumInt(cell_nonorth).get_nuc().get()
-        self.assertEqual(out.shape, (1, 8, 8))
+        if ref.ndim == 2: # In pyscf==2.8.0
+            ref = ref[None,:,:]
+        self.assertEqual(out.shape, ref.shape)
         self.assertAlmostEqual(abs(ref-out).max(), 0, 7)
 
     def test_get_nuc_kpts(self):
