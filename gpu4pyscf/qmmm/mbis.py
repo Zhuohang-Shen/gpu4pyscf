@@ -1,3 +1,16 @@
+# Copyright 2021-2024 The PySCF Developers. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import cupy as cp
 import numpy as np
@@ -116,6 +129,7 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
 
     atom_grid_vecrij = grid_coords[None, :, :] - atom_coords[:, None, :]
     atom_grid_rij = cp.linalg.norm(atom_grid_vecrij, axis=2)
+    del atom_grid_vecrij
 
     shell_populations = []
     shell_widths = []
@@ -145,7 +159,7 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
         rho0_nonzero_mask = old_rho0 >= MBIS_REMOVE_ZERO_RHO_GRID_THRESHOLD
         integration_prefactor = cp.zeros_like(grid_rho)
         integration_prefactor[rho0_nonzero_mask] = grid_w_rho[rho0_nonzero_mask] / old_rho0[rho0_nonzero_mask] # w (from integration) * rho / rho0 in Eq 18,19
-        del old_rho0
+        del old_rho0, rho0_nonzero_mask
         target_shell_populations = old_shell_rho @ integration_prefactor # Eq 18
         target_shell_widths = (old_shell_rho * atom_grid_rij[shell_atom_indices]) @ integration_prefactor
         target_shell_widths /= 3.0 * target_shell_populations # Eq 19
@@ -164,6 +178,7 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
             new_rhoA0 = cp.sum(new_shell_rho[s0:s1, :], axis = 0)
             delta_rhoA0 = cp.sum(grid_weights * (new_rhoA0 - old_rhoA0)**2) # Eq 20
             max_delta_rhoA0 = max(max_delta_rhoA0, float(delta_rhoA0))
+            del old_rhoA0, new_rhoA0
         max_delta_rhoA0 = float(np.sqrt(max_delta_rhoA0))
         del old_shell_rho, new_shell_rho
         log.info(f"MBIS i_cycle = {i_cycle:4d} max_delta_rhoA0 = {max_delta_rhoA0:.6e}")
@@ -204,6 +219,8 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
     log.info("MBIS Charge (a.u.)")
     for i_atom in range(mol.natm):
         log.info(f"{mol.elements[i_atom]:2s}  {charges[i_atom]:13.8f}")
+
+    atom_grid_vecrij = grid_coords[None, :, :] - atom_coords[:, None, :]
 
     dipoles = -cp.einsum("Ag,Agx->Ax", partitioned_w_rho, atom_grid_vecrij)
 

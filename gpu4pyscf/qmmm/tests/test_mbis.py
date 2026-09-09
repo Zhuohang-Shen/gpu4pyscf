@@ -375,5 +375,5 @@ class KnownValues(unittest.TestCase):
         assert np.max(np.abs(test_octupoles - ref_octupoles)) < 5e-2
 
 if __name__ == "__main__":
-    print("Full Tests for MBIS")
+    print("Full Tests for MBIS multipole")
     unittest.main()
