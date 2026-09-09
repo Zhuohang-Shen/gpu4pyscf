@@ -57,7 +57,7 @@ void grid_ranges_kernel(float2 *grid_frac_ranges, float *pair_ke,
                         PBCIntEnvVars envs,
                         int64_t *bas_ij_idx, int li_inc, int lj_inc,
                         int npairs, float log_threshold,
-                        float undressed_threshold, float ke_max)
+                        float undressed_threshold)
 {
     int pair_id = blockIdx.x * blockDim.x + threadIdx.x;
     if (pair_id >= npairs) return;
@@ -172,7 +172,6 @@ void grid_ranges_kernel(float2 *grid_frac_ranges, float *pair_ke,
                 logf(undressed_threshold);
             //float log_factor = -logf(undressed_threshold);
             float ke_raw = log_factor * aij * 2;
-            ke_raw = min(ke_raw, ke_max);
             pair_ke[pair_id] = max(ke_raw, ke_two_centers);
         } else {
             pair_ke[pair_id] = ke_two_centers;
@@ -539,12 +538,12 @@ int gaussian_prod_grid_ranges(float2 *grid_frac_ranges, float *pair_ke,
                               PBCIntEnvVars *envs,
                               int64_t *bas_ij_idx, int npairs,
                               int li_inc, int lj_inc, float log_threshold,
-                              float undressed_threshold, float ke_max)
+                              float undressed_threshold)
 {
     int batches = (npairs + THREADS-1) / THREADS;
     grid_ranges_kernel<<<batches, THREADS>>>(
         grid_frac_ranges, pair_ke, Ecut_by_shell, primary_atoms, *envs, bas_ij_idx,
-        li_inc, lj_inc, npairs, log_threshold, undressed_threshold, ke_max);
+        li_inc, lj_inc, npairs, log_threshold, undressed_threshold);
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         fprintf(stderr, "CUDA Error in gaussian_prod_grid_ranges: %s\n", cudaGetErrorString(err));

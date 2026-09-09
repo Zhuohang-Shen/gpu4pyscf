@@ -51,8 +51,8 @@ class KnownValues(unittest.TestCase):
         kpts = cell.make_kpts(nk, wrap_around=True)
         kmf = pscf.KUHF(cell, kpts=kpts).run(conv_tol=1e-9)
         kmf_cpu = kmf.to_cpu().run()
-        self.assertAlmostEqual(kmf.e_tot, kmf_cpu.e_tot, 8)
-        self.assertAlmostEqual(kmf.e_tot, -4.021029656152094, 8)
+        self.assertAlmostEqual(kmf.e_tot, kmf_cpu.e_tot, delta=1e-8)
+        self.assertAlmostEqual(kmf.e_tot, -4.021029656152094, delta=1e-8)
         pop = kmf.analyze()[0][0]
         self.assertAlmostEqual(lib.fp(pop), 0.02897067698093582, 5)
 

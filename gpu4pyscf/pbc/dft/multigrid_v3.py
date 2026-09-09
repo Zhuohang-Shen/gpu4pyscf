@@ -569,11 +569,12 @@ def _get_L_bases(nimgs, a):
     L_bases = cp.array(np.hstack([Tx, Ty, Tz]))
     return L_bases
 
-def _estimate_Ecut_and_grid_ranges(ni, bas_ij_idx, ke_max, precision, xctype):
+def _estimate_Ecut_and_grid_ranges(ni, bas_ij_idx, precision, xctype):
     '''Estimate the FFT energy cutoff and the spread of each orbital pair
     in real space'''
     cell = ni.sorted_cell
-    Ecut_by_shell = _estimate_fft_Ecut_per_shell(cell, precision, ke_max)
+    Ecut_by_shell = _estimate_fft_Ecut_per_shell(cell, precision),
+    Ecut_by_shell = cp.asarray(Ecut_by_shell, dtype=np.float32)
 
     npairs = len(bas_ij_idx)
     pair_ke = cp.empty(npairs, dtype=np.float32)
@@ -600,13 +601,12 @@ def _estimate_Ecut_and_grid_ranges(ni, bas_ij_idx, ke_max, precision, xctype):
         ctypes.c_int(npairs),
         ctypes.c_int(li_inc), ctypes.c_int(lj_inc),
         ctypes.c_float(math.log(precision/3)),
-        ctypes.c_float(undressed_threshold),
-        ctypes.c_float(ke_max))
+        ctypes.c_float(undressed_threshold))
     if err != 0:
         raise RuntimeError('grid range kernel failed')
     return pair_ke, grid_frac_ranges, primary_atoms
 
-def _estimate_fft_Ecut_per_shell(cell, precision, ke_max):
+def _estimate_fft_Ecut_per_shell(cell, precision):
     # To accurately describe the orbital in real space, the resolution for
     # real-space grid cannot be reduced, even a small normalized function is
     # associated with the orbital. The resolution is estimated in terms of the
@@ -622,12 +622,6 @@ def _estimate_fft_Ecut_per_shell(cell, precision, ke_max):
     E2 = log_fac * ai
     E2 = (log_fac + .5 * li * np.log(E2)) * ai
     Ecut = E2 * 2
-
-    # Some orbitals may require high Ecut, sometimes higher than ke_max.
-    # Use ke_max to limit the highest Ecut. This ensures that these orbital
-    # pairs are included in the last bucket in _partition_ke_for_fft.
-    Ecut[Ecut > ke_max] = ke_max
-    Ecut = cp.asarray(Ecut, dtype=np.float32)
     return Ecut
 
 def ke_to_mesh(a, cutoff):
@@ -706,7 +700,6 @@ def _partition_ke_for_fft(ni, pair_idx, init_ke, ke_max, precision, xctype, log)
     supmol_natm = bvkcell.natm * ni.mg_envs.nimgs
 
     a = cell.lattice_vectors()
-    mesh = ke_to_mesh(a, init_ke)
     mesh_final = ni.mesh
 
     # angular momemtum for each shell in cell
@@ -716,23 +709,24 @@ def _partition_ke_for_fft(ni, pair_idx, init_ke, ke_max, precision, xctype, log)
         ni, pair_idx, precision, xctype)
 
     pair_ke, grid_frac_ranges, primary_atoms = _estimate_Ecut_and_grid_ranges(
-        ni, supmol_bas_ij_idx, ke_max, precision, xctype)
+        ni, supmol_bas_ij_idx, precision, xctype)
 
     atom_grid_ranges_kern = libmgrid.atom_grid_ranges
 
-    buckets = []
-
     ke_upper = float(pair_ke.max().get())
-    ke_lower = init_ke
-    while ke_lower >= init_ke:
-        ke_lower = ke_upper * 0.7
+    mesh = ke_to_mesh(a, ke_upper)
+    log.debug1('Largest Ecut=%f mesh=%s', ke_upper, mesh)
+    mesh = np.minimum(mesh, mesh_final)
+
+    # Some orbital pairs may require high Ecut, sometimes higher than ke_max.
+    ke_lower = min(ke_upper, ke_max) * 0.7
+
+    buckets = []
+    while ke_upper >= init_ke:
         if ke_lower < init_ke:
-            ke_lower = 0
+            ke_lower = 0 # To include all remaining diffuse orbital pairs
         idx = cp.where((ke_lower < pair_ke) & (pair_ke <= ke_upper))[0]
         if len(idx) > 0:
-            mesh = ke_to_mesh(a, ke_upper)
-            mesh = np.minimum(mesh, mesh_final)
-
             filtered_pairs = supmol_bas_ij_idx[idx]
             filtered_grid_ranges = grid_frac_ranges[:,idx]
             filtered_p_atoms = primary_atoms[idx]
@@ -765,9 +759,9 @@ def _partition_ke_for_fft(ni, pair_idx, init_ke, ke_max, precision, xctype, log)
                 grid_ranges_cache.append(grid_ranges)
 
                 p_atoms = cp.empty(len(idx) + 2, dtype=np.int32)
-                p_atoms[0] = -1
-                cp.take(filtered_p_atoms, idx, out=p_atoms[1:-1])
+                p_atoms[0] = -1 # boundary sentinels
                 p_atoms[-1] = 2**30
+                cp.take(filtered_p_atoms, idx, out=p_atoms[1:-1])
                 shl_pair_offsets = cp.asarray(cp.where(p_atoms[1:] != p_atoms[:-1])[0], dtype=np.int32)
                 atom_seg_offsets.append(shl_pair_offsets)
 
@@ -816,7 +810,10 @@ def _partition_ke_for_fft(ni, pair_idx, init_ke, ke_max, precision, xctype, log)
             })
             log.debug('Add fft bucket: ke=%g mesh=%s, shl_pairs=%d',
                       ke_upper, mesh, len(filtered_pairs))
-        ke_upper = ke_lower
+
+        ke_lower, ke_upper = ke_lower*0.7, ke_lower
+        mesh = ke_to_mesh(a, ke_upper)
+        mesh = np.minimum(mesh, mesh_final)
     return buckets
 
 def _non_trivial_bvk_pairs(ni, precision):
