@@ -52,7 +52,7 @@ def setUpModule():
 
     kpts = np.random.random((2,3)).round(1)
     kpts[1] = -kpts[0]
-    kpts = cell.get_abs_kpts(kpts)
+    kpts = cell_orth.get_abs_kpts(kpts)
     nao = cell_orth.nao_nr()
     dm = np.random.random((len(kpts),nao,nao)) * .2
     dm1 = dm + np.eye(nao)
