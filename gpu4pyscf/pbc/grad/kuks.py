@@ -36,9 +36,6 @@ def energy_ee(ks_grad, dm, kpts):
     log = logger.new_logger(ks_grad)
     t0 = log.init_timer()
 
-    if isinstance(mf.grids, BeckeGrids):
-        raise NotImplementedError('gradients for BeckeGrids not supported')
-
     ni = mf._numint
     omega, k_lr, k_sr = ni.rsh_and_hybrid_coeff(mf.xc)
     j_factor = 1
