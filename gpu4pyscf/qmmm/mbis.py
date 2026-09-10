@@ -99,8 +99,8 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
         raise NotImplementedError("GTH pseudopotential is not supported in MBIS yet")
 
     if mol.charge < 0:
-        log.warning("MBIS does not handle negative charge well, particularly when the negative charge is diffuse. If you see a shell with huge width on one atom, "\
-                    "it is likely due to the diffused charge got fitted onto that random atom.")
+        log.warning("MBIS does not handle negative charge well, particularly when the negative charge is diffuse. "
+                    "If you see a shell with huge width on one atom, it is likely due to the diffused charge got fitted onto that random atom.")
 
     atom_coords = cp.asarray(mol.atom_coords())
     atom_charges = cp.asarray(mol.atom_charges(), dtype = cp.int32)
@@ -190,11 +190,12 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
             break
 
     assert converged, f"MBIS not converged in {max_cycle} iterations; last max_delta_rhoA0 = {max_delta_rhoA0:.3e} > conv_tol = {conv_tol:.3e}"
-    log.info(f"MBIS converged!")
+    log.info("MBIS converged!")
 
     n_shell = shell_atom_indices.shape[0]
     for i_shell in range(n_shell):
-        log.info(f"MBIS shell {i_shell} from atom {shell_atom_indices[i_shell]} has population = {shell_populations[i_shell]} and width = {shell_widths[i_shell]}")
+        log.info(f"MBIS shell {i_shell} from atom {shell_atom_indices[i_shell]} has "
+                 "population = {shell_populations[i_shell]} and width = {shell_widths[i_shell]}")
 
     if not compute_multipoles:
         return shell_populations.get(), shell_widths.get(), shell_atom_indices
@@ -233,9 +234,9 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
 
     log.info("MBIS Quadrupole xx yy zz xy xz yz (a.u.)")
     for i_atom in range(mol.natm):
-        log.info(f"{mol.elements[i_atom]:2s}  {quadrupoles[i_atom, 0, 0]:13.8f}  {quadrupoles[i_atom, 1, 1]:13.8f}  {quadrupoles[i_atom, 2, 2]:13.8f}  "\
-                 f"{0.5 * (quadrupoles[i_atom, 0, 1] + quadrupoles[i_atom, 1, 0]):13.8f}  "\
-                 f"{0.5 * (quadrupoles[i_atom, 0, 2] + quadrupoles[i_atom, 2, 0]):13.8f}  "\
+        log.info(f"{mol.elements[i_atom]:2s}  {quadrupoles[i_atom, 0, 0]:13.8f}  {quadrupoles[i_atom, 1, 1]:13.8f}  {quadrupoles[i_atom, 2, 2]:13.8f}  "
+                 f"{0.5 * (quadrupoles[i_atom, 0, 1] + quadrupoles[i_atom, 1, 0]):13.8f}  "
+                 f"{0.5 * (quadrupoles[i_atom, 0, 2] + quadrupoles[i_atom, 2, 0]):13.8f}  "
                  f"{0.5 * (quadrupoles[i_atom, 1, 2] + quadrupoles[i_atom, 2, 1]):13.8f}")
 
     # ORCA did not remove trace, and we follow them
@@ -243,14 +244,15 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
 
     log.info("MBIS Octupole xxx yyy zzz xxy xxz xyy xyz xzz yyz yzz (a.u.)")
     for i_atom in range(mol.natm):
-        log.info(f"{mol.elements[i_atom]:2s}  {octupoles[i_atom, 0, 0, 0]:13.8f}  {octupoles[i_atom, 1, 1, 1]:13.8f}  {octupoles[i_atom, 2, 2, 2]:13.8f}  "\
-                 f"{1.0/3.0 * (octupoles[i_atom, 0, 0, 1] + octupoles[i_atom, 0, 1, 0] + octupoles[i_atom, 1, 0, 0]):13.8f}  "\
-                 f"{1.0/3.0 * (octupoles[i_atom, 0, 0, 2] + octupoles[i_atom, 0, 2, 0] + octupoles[i_atom, 2, 0, 0]):13.8f}  "\
-                 f"{1.0/3.0 * (octupoles[i_atom, 0, 1, 1] + octupoles[i_atom, 1, 0, 1] + octupoles[i_atom, 1, 1, 0]):13.8f}  "\
-                 f"{1.0/6.0 * (octupoles[i_atom, 0, 1, 2] + octupoles[i_atom, 0, 2, 1] + octupoles[i_atom, 1, 0, 2] + octupoles[i_atom, 1, 2, 0] + octupoles[i_atom, 2, 0, 1] + octupoles[i_atom, 2, 1, 0]):13.8f}  "\
-                 f"{1.0/3.0 * (octupoles[i_atom, 0, 2, 2] + octupoles[i_atom, 2, 0, 2] + octupoles[i_atom, 2, 2, 0]):13.8f}  "\
-                 f"{1.0/3.0 * (octupoles[i_atom, 1, 1, 2] + octupoles[i_atom, 1, 2, 1] + octupoles[i_atom, 2, 1, 1]):13.8f}  "\
-                 f"{1.0/3.0 * (octupoles[i_atom, 1, 2, 2] + octupoles[i_atom, 2, 1, 2] + octupoles[i_atom, 2, 2, 1]):13.8f}  "\
+        log.info(f"{mol.elements[i_atom]:2s}  {octupoles[i_atom, 0, 0, 0]:13.8f}  {octupoles[i_atom, 1, 1, 1]:13.8f}  {octupoles[i_atom, 2, 2, 2]:13.8f}  "
+                 f"{1.0/3.0 * (octupoles[i_atom, 0, 0, 1] + octupoles[i_atom, 0, 1, 0] + octupoles[i_atom, 1, 0, 0]):13.8f}  "
+                 f"{1.0/3.0 * (octupoles[i_atom, 0, 0, 2] + octupoles[i_atom, 0, 2, 0] + octupoles[i_atom, 2, 0, 0]):13.8f}  "
+                 f"{1.0/3.0 * (octupoles[i_atom, 0, 1, 1] + octupoles[i_atom, 1, 0, 1] + octupoles[i_atom, 1, 1, 0]):13.8f}  "
+                 f"{1.0/6.0 * (octupoles[i_atom, 0, 1, 2] + octupoles[i_atom, 0, 2, 1] + octupoles[i_atom, 1, 0, 2] + octupoles[i_atom, 1, 2, 0]
+                               + octupoles[i_atom, 2, 0, 1] + octupoles[i_atom, 2, 1, 0]):13.8f}  "
+                 f"{1.0/3.0 * (octupoles[i_atom, 0, 2, 2] + octupoles[i_atom, 2, 0, 2] + octupoles[i_atom, 2, 2, 0]):13.8f}  "
+                 f"{1.0/3.0 * (octupoles[i_atom, 1, 1, 2] + octupoles[i_atom, 1, 2, 1] + octupoles[i_atom, 2, 1, 1]):13.8f}  "
+                 f"{1.0/3.0 * (octupoles[i_atom, 1, 2, 2] + octupoles[i_atom, 2, 1, 2] + octupoles[i_atom, 2, 2, 1]):13.8f}  "
                  f"")
 
     return charges.get(), dipoles.get(), quadrupoles.get(), octupoles.get()
