@@ -99,8 +99,8 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
         raise NotImplementedError("GTH pseudopotential is not supported in MBIS yet")
 
     if mol.charge < 0:
-        log.warning("MBIS does not handle negative charge well, particularly when the negative charge is diffuse. "
-                    "If you see a shell with huge width on one atom, it is likely due to the diffused charge got fitted onto that random atom.")
+        log.warn("MBIS does not handle negative charge well, particularly when the negative charge is diffuse. "
+                 "If you see a shell with huge width on one atom, it is likely due to the diffused charge got fitted onto that random atom.")
 
     atom_coords = cp.asarray(mol.atom_coords())
     atom_charges = cp.asarray(mol.atom_charges(), dtype = cp.int32)
