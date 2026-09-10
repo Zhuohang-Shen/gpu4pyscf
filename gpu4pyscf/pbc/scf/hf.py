@@ -237,9 +237,12 @@ class SCF(mol_hf.SCF):
         from gpu4pyscf.pbc.dft import multigrid, multigrid_v3
         if cell is None: cell = self.cell
         if kpt is None: kpt = self.kpt
+
+        allowed_fft_mesh_size = get_avail_mem() / 8 / 10 # 8 for 8 bytes per fp64, 10 is arbitrary (A 80 GB gpu will allow 1000^3 mesh)
+
         if isinstance(self._numint, multigrid.MultiGridNumIntBase):
             ni = self._numint
-        elif np.prod(cell.mesh) < 1000**3:
+        elif np.prod(cell.mesh) < allowed_fft_mesh_size:
             # In the pseudo and all-electron mixed case, MultiGridNumInt is
             # still more efficient if Ecut is not too high.
             ni = multigrid_v3.MultiGridNumInt(cell)
