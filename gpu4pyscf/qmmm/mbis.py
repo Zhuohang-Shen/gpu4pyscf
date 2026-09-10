@@ -211,6 +211,7 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
     rho0_nonzero_mask = rho0 >= MBIS_REMOVE_ZERO_RHO_GRID_THRESHOLD
     atom_partition = cp.zeros_like(atom_rho)
     atom_partition[:, rho0_nonzero_mask] = atom_rho[:, rho0_nonzero_mask] / rho0[rho0_nonzero_mask]
+    del rho0, rho0_nonzero_mask, atom_rho
 
     # MBIS Multipoles
 

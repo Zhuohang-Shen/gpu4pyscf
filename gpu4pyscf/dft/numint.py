@@ -1073,11 +1073,11 @@ def get_rho(ni, mol, dm, grids, max_memory=2000, verbose=None):
 
     ao_deriv = 0
     ngrids = grids.weights.size
-    rho = cupy.empty(ngrids)
+    rho = cupy.zeros(ngrids)
 
     t1 = t0 = log.init_timer()
     p0 = p1 = 0
-    for ao, idx, weight, _ in ni.block_loop(_sorted_mol, grids, nao, ao_deriv):
+    for ao, idx, weight, _ in ni.block_loop(_sorted_mol, grids, nao, ao_deriv, strict_grid_order = True):
         p0, p1 = p1, p1 + weight.size
         if mo_coeff is None:
             dm_mask = dm[idx[:,None],idx]
@@ -1086,6 +1086,7 @@ def get_rho(ni, mol, dm, grids, max_memory=2000, verbose=None):
             mo_coeff_mask = mo_coeff[idx,:]
             rho[p0:p1] = eval_rho2(_sorted_mol, ao, mo_coeff_mask, mo_occ, None, 'LDA')
         t1 = log.timer_debug2('eval rho slice', *t1)
+    assert p1 == ngrids
     t0 = log.timer_debug1('eval rho', *t0)
 
     if FREE_CUPY_CACHE:
@@ -1121,6 +1122,7 @@ def get_rho_naive(mol, dm, grids):
         ao = ni.eval_ao(mol, grids_coords[g0:g1, :], deriv = 0)
         for i_dm in range(nset):
             rho_tot[i_dm, g0:g1] = np.einsum("gi,gj,ij->g", ao, ao, dm[i_dm])
+    assert g1 == ngrids
 
     rho_tot = np.sum(rho_tot, axis = 0)
     return rho_tot
@@ -1168,11 +1170,11 @@ def get_rho_with_derivatives(ni, mol, dm, grids, xc = "r2scan", max_memory=2000,
         rho_dim = 5
 
     ngrids = grids.coords.shape[0]
-    rho_tot = cupy.empty([nset, rho_dim, ngrids])
+    rho_tot = cupy.zeros([nset, rho_dim, ngrids])
 
     t1 = t0 = log.init_timer()
     p0 = p1 = 0
-    for ao, idx, weight, _ in ni.block_loop(_sorted_mol, grids, nao, ao_deriv):
+    for ao, idx, weight, _ in ni.block_loop(_sorted_mol, grids, nao, ao_deriv, strict_grid_order = True):
         p0, p1 = p1, p1 + weight.size
         for i_dm in range(nset):
             if mo_coeff is None:
@@ -1183,6 +1185,7 @@ def get_rho_with_derivatives(ni, mol, dm, grids, xc = "r2scan", max_memory=2000,
                 rho_tot[i_dm, :, p0:p1] = eval_rho2(_sorted_mol, ao, mo_coeff_mask, mo_occ[i_dm], None, xctype)
 
         t1 = log.timer_debug2('eval rho slice', *t1)
+    assert p1 == ngrids
     t0 = log.timer_debug1('eval rho', *t0)
 
     if FREE_CUPY_CACHE:
@@ -1222,7 +1225,7 @@ def get_rho_with_derivatives_naive(mol, dm, grids, xc = "r2scan"):
         rho_dim = 4
     else:
         rho_dim = 5
-    rho_tot = np.empty([nset, rho_dim, ngrids])
+    rho_tot = np.zeros([nset, rho_dim, ngrids])
 
     ngrids_per_batch = 4096
     for g0 in range(0, ngrids, ngrids_per_batch):
@@ -1231,6 +1234,7 @@ def get_rho_with_derivatives_naive(mol, dm, grids, xc = "r2scan"):
         for i_dm in range(nset):
             rho = ni.eval_rho(mol, ao, dm[i_dm], xctype = xctype, hermi = 1, with_lapl = False)
             rho_tot[i_dm, :, g0:g1] = rho
+    assert g1 == ngrids
 
     return rho_tot
 
@@ -2054,6 +2058,8 @@ def _block_loop(ni, mol, grids, nao=None, deriv=0, max_memory=2000,
         if nao_sub == 0:
             if strict_grid_order:
                 zero_sized_ao = cupy.ndarray((comp,nao_sub,ip1-ip0), memptr=buf.data)
+                if deriv == 0:
+                    zero_sized_ao = zero_sized_ao[0]
                 yield zero_sized_ao, idx, weight, coords
             continue
 
