@@ -30,8 +30,8 @@ from pyscf.scf.uhf import UHF as UHF_CPU
 HIRSHFELD_REMOVE_ZERO_RHO_GRID_THRESHOLD = 1e-10
 
 _neutral_atom_spin = [
-       # Z    El  Name           Ground level  2S  S    Mult.  Source
-       # ---  --  -------------  ------------  --  ---  -----  -------------------------------
+    #    Z    El  Name           Ground level  2S  S    Mult.  Source
+    #    ---  --  -------------  ------------  --  ---  -----  -------------------------------
     1, # 1    H   Hydrogen       2S<1/2>       1   1/2  2      NIST term
     0, # 2    He  Helium         1S0           0   0    1      NIST term
     1, # 3    Li  Lithium        2S<1/2>       1   1/2  2      NIST term
