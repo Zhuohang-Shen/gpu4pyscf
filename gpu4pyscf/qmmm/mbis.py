@@ -243,13 +243,14 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
     octupoles = -cp.einsum("Ag,Agx,Agy,Agz->Axyz", partitioned_w_rho, atom_grid_vecrij, atom_grid_vecrij, atom_grid_vecrij)
 
     log.info("MBIS Octupole xxx yyy zzz xxy xxz xyy xyz xzz yyz yzz (a.u.)")
+    octupole_xyz_term = octupoles[i_atom, 0, 1, 2] + octupoles[i_atom, 0, 2, 1] + octupoles[i_atom, 1, 0, 2] \
+                        + octupoles[i_atom, 1, 2, 0] + octupoles[i_atom, 2, 0, 1] + octupoles[i_atom, 2, 1, 0] # Just to make linter happy
     for i_atom in range(mol.natm):
         log.info(f"{mol.elements[i_atom]:2s}  {octupoles[i_atom, 0, 0, 0]:13.8f}  {octupoles[i_atom, 1, 1, 1]:13.8f}  {octupoles[i_atom, 2, 2, 2]:13.8f}  "
                  f"{1.0/3.0 * (octupoles[i_atom, 0, 0, 1] + octupoles[i_atom, 0, 1, 0] + octupoles[i_atom, 1, 0, 0]):13.8f}  "
                  f"{1.0/3.0 * (octupoles[i_atom, 0, 0, 2] + octupoles[i_atom, 0, 2, 0] + octupoles[i_atom, 2, 0, 0]):13.8f}  "
                  f"{1.0/3.0 * (octupoles[i_atom, 0, 1, 1] + octupoles[i_atom, 1, 0, 1] + octupoles[i_atom, 1, 1, 0]):13.8f}  "
-                 f"{1.0/6.0 * (octupoles[i_atom, 0, 1, 2] + octupoles[i_atom, 0, 2, 1] + octupoles[i_atom, 1, 0, 2] + octupoles[i_atom, 1, 2, 0]
-                               + octupoles[i_atom, 2, 0, 1] + octupoles[i_atom, 2, 1, 0]):13.8f}  "
+                 f"{1.0/6.0 * octupole_xyz_term:13.8f}  "
                  f"{1.0/3.0 * (octupoles[i_atom, 0, 2, 2] + octupoles[i_atom, 2, 0, 2] + octupoles[i_atom, 2, 2, 0]):13.8f}  "
                  f"{1.0/3.0 * (octupoles[i_atom, 1, 1, 2] + octupoles[i_atom, 1, 2, 1] + octupoles[i_atom, 2, 1, 1]):13.8f}  "
                  f"{1.0/3.0 * (octupoles[i_atom, 1, 2, 2] + octupoles[i_atom, 2, 1, 2] + octupoles[i_atom, 2, 2, 1]):13.8f}  "
