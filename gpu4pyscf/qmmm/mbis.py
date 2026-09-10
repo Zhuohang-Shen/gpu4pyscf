@@ -89,6 +89,7 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
     if dm.ndim == 3:
         assert dm.shape[0] == 2
         dm = dm[0] + dm[1]
+    assert dm.shape == (mol.nao, mol.nao)
 
     natm = natm_without_ghost(mol)
     if natm != mol.natm:
@@ -124,7 +125,7 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
     grid_weights = grid_weights[rho_nonzero_mask]
     grid_w_rho = grid_weights * grid_rho
 
-    nelec = float(cp.sum(grid_weights * grid_rho))
+    nelec = float(cp.sum(grid_w_rho))
     log.info(f"Total number of electrons integrated by MBIS grid = {nelec}")
 
     atom_grid_vecrij = grid_coords[None, :, :] - atom_coords[:, None, :]
@@ -200,8 +201,6 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
     if not compute_multipoles:
         return shell_populations.get(), shell_widths.get(), shell_atom_indices
 
-    # MBIS Multipoles
-
     shell_rho = _mbis_density_on_grid(atom_grid_rij, shell_atom_indices, shell_populations, shell_widths)
     atom_rho = []
     for i_atom in range(mol.natm):
@@ -213,9 +212,11 @@ def mbis(mol, grids, dm, conv_tol = 1e-8, max_cycle = 500, damping = 0.1, comput
     atom_partition = cp.zeros_like(atom_rho)
     atom_partition[:, rho0_nonzero_mask] = atom_rho[:, rho0_nonzero_mask] / rho0[rho0_nonzero_mask]
 
+    # MBIS Multipoles
+
     partitioned_w_rho = atom_partition * grid_w_rho[None, :]
     partitioned_nelec = cp.sum(partitioned_w_rho, axis = 1)
-    charges = atom_charges.astype(cp.float32) - partitioned_nelec
+    charges = atom_charges.astype(cp.float64) - partitioned_nelec
 
     log.info("MBIS Charge (a.u.)")
     for i_atom in range(mol.natm):
