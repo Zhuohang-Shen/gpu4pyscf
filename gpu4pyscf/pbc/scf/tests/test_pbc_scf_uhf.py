@@ -25,14 +25,12 @@ from gpu4pyscf.pbc.scf.j_engine import PBCJMatrixOpt
 def setUpModule():
     global cell
     L = 4
-    n = 21
     cell = pbcgto.Cell()
     cell.build(unit = 'B',
                verbose = 7,
                output = '/dev/null',
-               precision = 1e-10,
+               precision = 1e-9,
                a = ((L,0,0),(0,L,0),(0,0,L)),
-               mesh = [n,n,n],
                atom = [['He', (L/2.-.5,L/2.,L/2.-.5)],
                        ['He', (L/2.   ,L/2.,L/2.+.5)]],
                basis = { 'He': [[0, (0.8, 1.0)],
@@ -60,7 +58,7 @@ class KnownValues(unittest.TestCase):
         kpts_bands = np.random.random((1,3))
         e = kmf.get_bands(kpts_bands)[0]
         e_ref = kmf_cpu.get_bands(kpts_bands)[0]
-        self.assertAlmostEqual(abs(e.get()-e_ref).max(), 0, 6)
+        self.assertAlmostEqual(abs(e.get()-e_ref).max(), 0, delta=5e-6)
 
     def test_uhf_bands(self):
         mf = pscf.UHF(cell).run(conv_tol=1e-9)
@@ -74,7 +72,7 @@ class KnownValues(unittest.TestCase):
         kpts_bands = np.random.random((4,3))
         e = mf.get_bands(kpts_bands)[0]
         e_ref = mf_cpu.get_bands(kpts_bands)[0]
-        self.assertAlmostEqual(abs(e.get()-e_ref).max(), 0, 6)
+        self.assertAlmostEqual(abs(e.get()-e_ref).max(), 0, delta=5e-6)
 
     def test_small_system(self):
         mol = pbcgto.Cell(

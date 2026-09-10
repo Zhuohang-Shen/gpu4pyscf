@@ -274,6 +274,12 @@ def _eval_density_v1(ni, dm_sc, kpts=None, with_tau=False):
     vol = np.linalg.det(a)
     nkpts = len(ni.bvkmesh_Ls)
 
+    nimgs = cell.nimgs
+    Tx = np.arange(-nimgs[0], nimgs[0]+1, dtype=np.float64)
+    Ty = np.arange(-nimgs[1], nimgs[1]+1, dtype=np.float64)
+    Tz = np.arange(-nimgs[2], nimgs[2]+1, dtype=np.float64)
+    supmol_img_coords = cp.asarray(lib.cartesian_prod([Tx, Ty, Tz]).dot(a))
+
     work = cp.empty_like(rhoG)
     if not with_tau:
         kern = libmgrid.evaluate_density
@@ -283,10 +289,8 @@ def _eval_density_v1(ni, dm_sc, kpts=None, with_tau=False):
 
     mg_envs = ni.mg_envs
 
-    tile_info = None
     fft_buckets = ni.fft_buckets or []
-    if fft_buckets and fft_buckets[0]['grid_tile_cache'] is None:
-        tile_info = _grid_range_to_tile_info_converter(fft_buckets, cell)
+    tile_info = _grid_range_to_tile_info_converter(fft_buckets, cell)
 
     for bucket in fft_buckets:
         mesh = bucket['mesh']
@@ -304,12 +308,8 @@ def _eval_density_v1(ni, dm_sc, kpts=None, with_tau=False):
             tauR.fill(0)
 
         for n, (li, lj) in enumerate(bucket['lij_patterns']):
-            if tile_info is None:
-                grid_tile_idx, dressed_bas_ij, shl_pair_offsets = \
-                        bucket['grid_tile_cache'][n]
-            else:
-                grid_tile_idx, dressed_bas_ij, shl_pair_offsets = tile_info(
-                    bucket['bas_ij_cache'][n], bucket['grid_ranges_cache'][n], mesh)
+            grid_tile_idx, dressed_bas_ij, shl_pair_offsets = tile_info(
+                bucket['bas_ij_cache'][n], bucket['grid_ranges_cache'][n], mesh)
 
             if len(dressed_bas_ij) == 0: continue
             ntiles = len(grid_tile_idx)
@@ -320,7 +320,7 @@ def _eval_density_v1(ni, dm_sc, kpts=None, with_tau=False):
                 ctypes.cast(dm_sc.data.ptr, ctypes.c_void_p),
                 ctypes.byref(mg_envs),
                 dxyz_dabc.ctypes,
-                ctypes.cast(ni.supmol_img_coords.data.ptr, ctypes.c_void_p),
+                ctypes.cast(supmol_img_coords.data.ptr, ctypes.c_void_p),
                 ctypes.c_int(li), ctypes.c_int(lj),
                 ctypes.c_int(tiles_per_block),
                 ctypes.cast(shl_pair_offsets.data.ptr, ctypes.c_void_p),
@@ -431,6 +431,11 @@ def _eval_xc_mat_v1(ni, vxcG, out=None, work=None):
         vxc_mat.fill(0.)
 
     a = cell.lattice_vectors()
+    nimgs = cell.nimgs
+    Tx = np.arange(-nimgs[0], nimgs[0]+1, dtype=np.float64)
+    Ty = np.arange(-nimgs[1], nimgs[1]+1, dtype=np.float64)
+    Tz = np.arange(-nimgs[2], nimgs[2]+1, dtype=np.float64)
+    supmol_img_coords = cp.asarray(lib.cartesian_prod([Tx, Ty, Tz]).dot(a))
 
     if isinstance(vxcG, cp.ndarray):
         vrhoG = vxcG.reshape(ni.mesh)
@@ -474,7 +479,7 @@ def _eval_xc_mat_v1(ni, vxcG, out=None, work=None):
                 ctypes.cast(sub_vtauR.data.ptr, ctypes.c_void_p),
                 ctypes.byref(mg_envs),
                 dxyz_dabc.ctypes,
-                ctypes.cast(ni.supmol_img_coords.data.ptr, ctypes.c_void_p),
+                ctypes.cast(supmol_img_coords.data.ptr, ctypes.c_void_p),
                 ctypes.c_int(li), ctypes.c_int(lj),
                 ctypes.c_int(tiles_per_block),
                 ctypes.cast(shl_pair_offsets.data.ptr, ctypes.c_void_p),
@@ -656,17 +661,18 @@ def _partition_ke_for_aft(ni, pair_idx, pair_ke, init_ke, ke_max, xctype, log):
     bvkcell = ni.bvkcell
     a = cell.lattice_vectors()
 
-    mesh_max = np.asarray(ni.mesh, dtype=np.int32)
-    mesh = ke_to_mesh(a, init_ke)
-
     ang_by_shell = cp.array(bvkcell._bas[:,ANG_OF])
     nimgs = np.asarray(bvkcell.nimgs, dtype=np.int32)
 
-    buckets = []
+    ke_upper = float(pair_ke.max().get())
+    ke_upper = min(ke_upper, ke_max)
+    mesh = mesh_max = np.minimum(ke_to_mesh(a, ke_upper), ni.mesh)
+    ke_lower = ke_upper * 0.6
 
-    ke_lower, ke_upper = 0, init_ke
-    while ke_lower <= ke_max:
-        mesh = np.minimum(mesh, mesh_max)
+    buckets = []
+    while ke_upper > 0:
+        if ke_lower < init_ke:
+            ke_lower = 0 # To include all remaining diffuse orbital pairs
         filtered_pairs = pair_idx[(ke_lower < pair_ke) & (pair_ke <= ke_upper)]
         if len(filtered_pairs) > 0:
             ish, jsh = divmod(filtered_pairs, NBAS_MAX)
@@ -689,9 +695,9 @@ def _partition_ke_for_aft(ni, pair_idx, pair_ke, init_ke, ke_max, xctype, log):
             log.debug('Add aft bucket: ke=%g mesh=%s, shl_pairs=%d', ke_upper,
                       mesh, len(filtered_pairs))
 
-        mesh = (mesh * 0.75).astype(np.int32) * 2
-        mesh[mesh < 8] = 8
-        ke_lower, ke_upper = ke_upper, mesh_to_ke(a, mesh).min()
+        ke_lower, ke_upper = ke_lower*0.6, ke_lower
+        mesh = ke_to_mesh(a, ke_upper)
+        mesh = np.minimum(mesh, mesh_max)
     return buckets
 
 def _partition_ke_for_fft(ni, pair_idx, init_ke, ke_max, precision, xctype, log):
@@ -722,7 +728,7 @@ def _partition_ke_for_fft(ni, pair_idx, init_ke, ke_max, precision, xctype, log)
     ke_lower = min(ke_upper, ke_max) * 0.7
 
     buckets = []
-    while ke_upper >= init_ke:
+    while ke_upper > 0:
         if ke_lower < init_ke:
             ke_lower = 0 # To include all remaining diffuse orbital pairs
         idx = cp.where((ke_lower < pair_ke) & (pair_ke <= ke_upper))[0]
@@ -811,6 +817,10 @@ def _partition_ke_for_fft(ni, pair_idx, init_ke, ke_max, precision, xctype, log)
             log.debug('Add fft bucket: ke=%g mesh=%s, shl_pairs=%d',
                       ke_upper, mesh, len(filtered_pairs))
 
+        # Preferred to add buckets from high Ecut to low Ecut. When lattice is
+        # changed in a geometry optimization workflow, it's preferrable to fix
+        # mesh in each bucket. These sub-meshs are more stable in the high->low
+        # scan order.
         ke_lower, ke_upper = ke_lower*0.7, ke_lower
         mesh = ke_to_mesh(a, ke_upper)
         mesh = np.minimum(mesh, mesh_final)
@@ -2011,7 +2021,6 @@ class MultiGridNumInt(multigrid_v1.MultiGridNumIntBase):
             #self.mesh = cell.mesh
         self.bvkcell = None
         self.mg_envs = None
-        self.supmol_img_coords = None
         self.aft_buckets = None
         self.fft_buckets = None
         self.xctype = None
@@ -2091,7 +2100,7 @@ class MultiGridNumInt(multigrid_v1.MultiGridNumIntBase):
             # Filter shell pairs that are not handled by AFT. Using FFT code for
             # the remaining pairs.
             if self.aft_buckets:
-                aft_ke_max = self.aft_buckets[-1]['ke_cutoff']
+                aft_ke_max = self.aft_buckets[0]['ke_cutoff']
                 if aft_ke_max < ke_cutoff:
                     bas_ij_idx = bas_ij_idx[aft_Ecut > aft_ke_max]
                 else:
@@ -2106,28 +2115,6 @@ class MultiGridNumInt(multigrid_v1.MultiGridNumIntBase):
             # primitive shells in supmol.
             self.fft_buckets = _partition_ke_for_fft(
                 self, bas_ij_idx, init_ke, ke_cutoff, precision, xctype, log)
-
-            nimgs = cell.nimgs
-            Tx = np.arange(-nimgs[0], nimgs[0]+1, dtype=np.float64)
-            Ty = np.arange(-nimgs[1], nimgs[1]+1, dtype=np.float64)
-            Tz = np.arange(-nimgs[2], nimgs[2]+1, dtype=np.float64)
-            self.supmol_img_coords = cp.asarray(lib.cartesian_prod([Tx, Ty, Tz]).dot(a))
-
-            # If memory is sufficient, cache tile info for each bucket, including:
-            # effective tile indices, orbital pairs indices, and corresponding offsets
-            if 0 and len(bas_ij_idx) < 3000000 and np.prod(mesh) < 400**3:
-                mem = get_avail_mem()
-                t1 = log.timer_debug1('generating orbital pairs', *t0)
-                tile_info = _grid_range_to_tile_info_converter(self.fft_buckets, cell)
-                for bucket in self.fft_buckets:
-                    bucket['grid_tile_cache'] = [
-                        tile_info(bas_ij_idx, grid_range, bucket['mesh'])
-                        for bas_ij_idx, grid_range in zip(
-                            bucket['bas_ij_cache'], bucket['grid_ranges_cache'])
-                    ]
-                log.timer_debug1('grid_tile_cache', *t1)
-                tile_cache_mem = mem - get_avail_mem()
-                log.debug1('grid_tile_cache memory usage = %.2f MB', tile_cache_mem*1e-6)
 
         if self.allow_mesh_reduction:
             mesh = self.mesh
