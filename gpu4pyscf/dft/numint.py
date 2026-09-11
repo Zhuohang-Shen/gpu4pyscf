@@ -1077,7 +1077,7 @@ def get_rho(ni, mol, dm, grids, max_memory=2000, verbose=None):
 
     t1 = t0 = log.init_timer()
     p0 = p1 = 0
-    for ao, idx, weight, _ in ni.block_loop(_sorted_mol, grids, nao, ao_deriv, strict_grid_order = True):
+    for ao, idx, weight, _ in ni.block_loop(_sorted_mol, grids, nao, ao_deriv):
         p0, p1 = p1, p1 + weight.size
         if mo_coeff is None:
             dm_mask = dm[idx[:,None],idx]
@@ -1174,7 +1174,7 @@ def get_rho_with_derivatives(ni, mol, dm, grids, xc = "r2scan", max_memory=2000,
 
     t1 = t0 = log.init_timer()
     p0 = p1 = 0
-    for ao, idx, weight, _ in ni.block_loop(_sorted_mol, grids, nao, ao_deriv, strict_grid_order = True):
+    for ao, idx, weight, _ in ni.block_loop(_sorted_mol, grids, nao, ao_deriv):
         p0, p1 = p1, p1 + weight.size
         for i_dm in range(nset):
             if mo_coeff is None:
@@ -1992,7 +1992,7 @@ def _sparse_index(mol, coords, l_ctr_offsets, ao_loc, opt=None):
     return pad, idx, non0shl_idx, ctr_offsets_slice, ao_loc_slice
 
 def _block_loop(ni, mol, grids, nao=None, deriv=0, max_memory=2000,
-                non0tab=None, blksize=None, buf=None, extra=0, grid_range=None, strict_grid_order=False):
+                non0tab=None, blksize=None, buf=None, extra=0, grid_range=None):
     '''
     Generator loops over grids block-by-block.
     Kwargs:
@@ -2002,7 +2002,6 @@ def _block_loop(ni, mol, grids, nao=None, deriv=0, max_memory=2000,
         blksize: if not given, it will be estimated with avail GPU memory.
         buf: dummy argument for compatibility with PySCF
         grid_range: loop [grid_start, grid_end] in grids only. Both values has to be multiple of MIN_BLK_SIZE.
-        strict_grid_order: if True, no grids will be skipped, even if ao dimension is zero.
     '''
     log = logger.new_logger(mol)
     if grids.coords is None:
@@ -2055,13 +2054,7 @@ def _block_loop(ni, mol, grids, nao=None, deriv=0, max_memory=2000,
         coords = cupy.asarray(grids.coords[ip0:ip1])
         weight = cupy.asarray(grids.weights[ip0:ip1])
 
-        if nao_sub == 0:
-            if strict_grid_order:
-                zero_sized_ao = cupy.ndarray((comp,nao_sub,ip1-ip0), memptr=buf.data)
-                if deriv == 0:
-                    zero_sized_ao = zero_sized_ao[0]
-                yield zero_sized_ao, idx, weight, coords
-            continue
+        # Note: do NOT skip when nao_sub == 0, it'll mess up the grid order!
 
         ao_mask = eval_ao(
             _sorted_mol, coords, deriv,
@@ -2460,6 +2453,8 @@ def _scale_ao(ao, wv, out=None):
     nvar, nao, ngrids = ao.shape
     assert wv.shape == (nvar, ngrids)
     out = ndarray((nao, ngrids), dtype=ao.dtype, buffer=out)
+    if ao.size == 0:
+        return out
     if not ao.flags.c_contiguous:
         return contract('nip,np->ip', ao, wv, out=out)
 
