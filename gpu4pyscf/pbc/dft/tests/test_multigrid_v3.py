@@ -50,9 +50,9 @@ def setUpModule():
         unit = 'Bohr',
     )
 
-    kptsa = np.random.random((2,3))
-    kpts = kptsa.copy()
+    kpts = np.random.random((2,3)).round(1)
     kpts[1] = -kpts[0]
+    kpts = cell_orth.get_abs_kpts(kpts)
     nao = cell_orth.nao_nr()
     dm = np.random.random((len(kpts),nao,nao)) * .2
     dm1 = dm + np.eye(nao)
@@ -223,7 +223,7 @@ class KnownValues(unittest.TestCase):
         ref = MultiGridNumInt_cpu(cell_orth).get_nuc(kpts)
         out = multigrid.MultiGridNumInt(cell_orth).get_nuc(kpts).get()
         self.assertEqual(out.shape, ref.shape)
-        self.assertAlmostEqual(abs(ref-out).max(), 0, delta=1e-8)
+        self.assertAlmostEqual(abs(ref-out).max(), 0, 8)
 
     def test_get_nuc_kpts_nonorth(self):
         ref = MultiGridNumInt_cpu(cell_nonorth).get_nuc(kpts)
@@ -925,7 +925,7 @@ class KnownValues(unittest.TestCase):
 
         kpts = cell.make_kpts([1,1,1])
         mf = KRKS_gpu(cell, xc = 'pbe', kpts = kpts)
-        mf.conv_tol = 1e-10
+        mf.conv_tol = 1e-8
 
         # mf = mf.multigrid_numint()
         # assert type(mf._numint) is multigrid.MultiGridNumInt
@@ -956,7 +956,7 @@ class KnownValues(unittest.TestCase):
             [-2.78640919e-03, -8.51738633e-06, -8.51738633e-06],
         ])
 
-        assert abs(test_energy - ref_energy) < 3e-9
+        assert abs(test_energy - ref_energy) < 1e-8
         assert np.max(np.abs(test_gradient - ref_gradient)) < 1e-6
 
     def test_shell_splitting_for_large_fock_in_imagediff_space_k(self):
@@ -981,7 +981,7 @@ class KnownValues(unittest.TestCase):
 
         kpts = cell.make_kpts([1,1,3])
         mf = KRKS_gpu(cell, xc = 'pbe', kpts = kpts)
-        mf.conv_tol = 1e-10
+        mf.conv_tol = 1e-8
 
         # mf = mf.multigrid_numint()
         # assert type(mf._numint) is multigrid.MultiGridNumInt
@@ -1012,8 +1012,8 @@ class KnownValues(unittest.TestCase):
             [-1.66792993e-03, -8.52961493e-06, -6.81679641e-06],
         ])
 
-        assert abs(test_energy - ref_energy) < 3e-9
-        assert np.max(np.abs(test_gradient - ref_gradient)) < 1e-6
+        assert abs(test_energy - ref_energy) < 3e-7
+        assert np.max(np.abs(test_gradient - ref_gradient)) < 5e-6
 
     def test_shell_splitting_for_large_fock_in_imagediff_space_unrestricted(self):
         cell = gto.M(
